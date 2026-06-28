@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Digital Twin — 3-Phase Induction Motor</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --panel2:#1c2230; --line:#2b3340;
+    --text:#e6edf3; --muted:#9aa7b4; --accent:#2f81f7; --good:#2ecc71;
+    --warn:#f1c40f; --bad:#e74c3c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+       background:var(--bg);color:var(--text)}
+  header{padding:16px 22px;border-bottom:1px solid var(--line);
+         display:flex;align-items:center;gap:12px;background:var(--panel)}
+  header h1{font-size:18px;margin:0;font-weight:600}
+  header .badge{font-size:11px;color:var(--muted);border:1px solid var(--line);
+                padding:3px 8px;border-radius:999px}
+  .wrap{display:grid;grid-template-columns:300px 1fr;gap:0;min-height:calc(100vh - 55px)}
+  aside{background:var(--panel);border-right:1px solid var(--line);padding:18px;overflow-y:auto}
+  aside h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);
+           margin:18px 0 10px}
+  aside h2:first-child{margin-top:0}
+  .ctrl{margin-bottom:14px}
+  .ctrl label{display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px}
+  .ctrl label b{color:var(--accent);font-variant-numeric:tabular-nums}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  select{width:100%;background:var(--panel2);color:var(--text);border:1px solid var(--line);
+         border-radius:6px;padding:6px}
+  .row{display:flex;gap:8px;margin-top:14px}
+  button{flex:1;background:var(--panel2);color:var(--text);border:1px solid var(--line);
+         border-radius:6px;padding:8px;cursor:pointer;font-size:13px}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  main{padding:18px;overflow-y:auto}
+  .gauges{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0}
+  .metric{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .metric .k{font-size:12px;color:var(--muted)}
+  .metric .v{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:4px}
+  .grid2{display:grid;grid-template-columns:3fr 2fr;gap:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+  .card h3{margin:2px 6px 8px;font-size:14px;font-weight:600}
+  .recs{font-size:13px;line-height:1.7}
+  .recs .crit{color:var(--bad)} .recs .warn{color:var(--warn)} .recs .info{color:var(--good)}
+  .ml{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:center}
+  .pill{font-size:13px;padding:6px 10px;border-radius:8px;text-align:center;border:1px solid var(--line)}
+  .pill.ok{color:var(--good)} .pill.bad{color:var(--bad)}
+  footer{color:var(--muted);font-size:12px;padding:10px 22px;border-top:1px solid var(--line)}
+  .plot{width:100%}
+</style>
+</head>
+<body>
+<header>
+  <h1>⚙️ Digital Twin — 3-Phase Induction Motor</h1>
+  <span class="badge">runs in-browser · GitHub Pages</span>
+</header>
+
+<div class="wrap">
+  <aside>
+    <h2>Motor Designer</h2>
+    <div class="ctrl"><label>Rated line voltage [V] <b id="vV">400</b></label>
+      <input id="v_line" type="range" min="100" max="690" step="10" value="400"></div>
+    <div class="ctrl"><label>Supply frequency [Hz]</label>
+      <select id="freq"><option value="50">50</option><option value="60">60</option></select></div>
+    <div class="ctrl"><label>Poles</label>
+      <select id="poles"><option>2</option><option selected>4</option><option>6</option><option>8</option></select></div>
+    <div class="ctrl"><label>Inertia J [kg·m²] <b id="Jv">0.05</b></label>
+      <input id="inertia" type="range" min="0.01" max="0.5" step="0.01" value="0.05"></div>
+
+    <h2>Operating Conditions</h2>
+    <div class="ctrl"><label>Load torque [N·m] <b id="loadV">45</b></label>
+      <input id="load" type="range" min="0" max="160" step="1" value="45"></div>
+    <div class="ctrl"><label>Ambient temp [°C] <b id="ambV">25</b></label>
+      <input id="amb" type="range" min="-10" max="50" step="1" value="25"></div>
+    <div class="ctrl"><label>Cooling airflow [m³/h] <b id="airV">80</b></label>
+      <input id="air" type="range" min="0" max="300" step="5" value="80"></div>
+    <div class="ctrl"><label>Bearing condition <b id="bearV">1.00</b></label>
+      <input id="bear" type="range" min="0" max="1" step="0.05" value="1"></div>
+    <div class="ctrl"><label>Lubrication quality <b id="lubV">1.00</b></label>
+      <input id="lub" type="range" min="0" max="1" step="0.05" value="1"></div>
+
+    <div class="row">
+      <button id="runBtn" class="primary">⏸ Pause</button>
+      <button id="resetBtn">⟲ Reset</button>
+    </div>
+  </aside>
+
+  <main>
+    <div class="gauges">
+      <div class="card"><div id="gSpeed" class="plot"></div></div>
+      <div class="card"><div id="gTorque" class="plot"></div></div>
+      <div class="card"><div id="gTemp" class="plot"></div></div>
+      <div class="card"><div id="gEff" class="plot"></div></div>
+    </div>
+
+    <div class="metrics">
+      <div class="metric"><div class="k">Input power</div><div class="v" id="mPin">–</div></div>
+      <div class="metric"><div class="k">Output power</div><div class="v" id="mPout">–</div></div>
+      <div class="metric"><div class="k">Stator current</div><div class="v" id="mI">–</div></div>
+      <div class="metric"><div class="k">Power factor</div><div class="v" id="mPF">–</div></div>
+    </div>
+    <div class="metrics">
+      <div class="metric"><div class="k">Slip</div><div class="v" id="mSlip">–</div></div>
+      <div class="metric"><div class="k">Vibration</div><div class="v" id="mVib">–</div></div>
+      <div class="metric"><div class="k">Bearing wear</div><div class="v" id="mWear">–</div></div>
+      <div class="metric"><div class="k">Est. remaining life</div><div class="v" id="mRUL">–</div></div>
+    </div>
+
+    <div class="grid2">
+      <div>
+        <div class="card"><h3>Live trends</h3><div id="trend" class="plot"></div></div>
+        <div class="card" style="margin-top:14px"><h3>Power</h3><div id="power" class="plot"></div></div>
+      </div>
+      <div>
+        <div class="card"><h3>Torque–speed characteristic</h3><div id="tsc" class="plot"></div></div>
+        <div class="card" style="margin-top:14px">
+          <h3>🤖 ML bearing prognostics</h3>
+          <div class="ml">
+            <div id="gFail" class="plot"></div>
+            <div>
+              <div class="metric" style="margin-bottom:8px"><div class="k">ML remaining life</div><div class="v" id="mlRUL">–</div></div>
+              <div id="anom" class="pill ok">✅ Normal</div>
+            </div>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:8px">
+            In-browser surrogate of the trained scikit-learn models
+            (RUL / failure / anomaly) calibrated to match their behaviour.
+          </div>
+        </div>
+        <div class="card" style="margin-top:14px"><h3>🧠 Recommendations</h3>
+          <div id="recs" class="recs"></div></div>
+      </div>
+    </div>
+  </main>
+</div>
+<footer>Physics: per-phase equivalent circuit + Thévenin reduction · 2-node lumped thermal network · explicit-Euler rotor dynamics. Same model as the Python <code>motor_twin</code> package.</footer>
+
+<script>
+/* ----------------------------- complex helpers ------------------------------ */
+const cmul=(a,b)=>[a[0]*b[0]-a[1]*b[1], a[0]*b[1]+a[1]*b[0]];
+const cdiv=(a,b)=>{const d=b[0]*b[0]+b[1]*b[1];return [(a[0]*b[0]+a[1]*b[1])/d,(a[1]*b[0]-a[0]*b[1])/d];};
+const cabs=a=>Math.hypot(a[0],a[1]);
+const csub=(a,b)=>[a[0]-b[0],a[1]-b[1]];
+
+/* ----------------------------- motor model ---------------------------------- */
+// Per-phase equivalent-circuit params (referred to stator), ~7.5 kW machine.
+const P={r1:0.50,x1:1.20,r2:0.55,x2:1.20,xm:35.0,rc:360.0,
+         friction:0.002, mech_loss:80.0, rated_power:7500.0};
+let design={v_line:400, freq:50, poles:4, inertia:0.05};
+
+function derived(){
+  const ns=120*design.freq/design.poles;            // sync rpm
+  return {ns, ws:2*Math.PI*ns/60, vph:design.v_line/Math.SQRT2/Math.sqrt(1.5)};
+}
+// vphase = v_line/sqrt(3):
+function vphase(){return design.v_line/Math.sqrt(3);}
+
+function operatingPoint(slip){
+  const s=Math.max(slip,1e-6), vph=vphase();
+  const ns=120*design.freq/design.poles, ws=2*Math.PI*ns/60;
+  const denom=[P.r1, P.x1+P.xm];
+  const vth=vph*cabs(cdiv([0,P.xm],denom));
+  const zth=cdiv(cmul([0,P.xm],[P.r1,P.x1]),denom);
+  const rth=zth[0], xth=zth[1];
+  const r2s=P.r2/s;
+  const zsq=(rth+r2s)**2+(xth+P.x2)**2;
+  const te=3*vth*vth*r2s/(ws*zsq);
+  const i2=vth/Math.sqrt(zsq);
+  const pair=te*ws, protcu=3*i2*i2*P.r2, pmech=pair-protcu, pout=pmech-P.mech_loss;
+  const v1=[vph,0], zrot=[P.r1+r2s, P.x1+P.x2];
+  const irot=cdiv(v1,zrot);
+  const e=csub(v1, cmul(irot,[P.r1,P.x1]));
+  const icore=cdiv(e,[P.rc,0]);
+  const imag=cdiv(e,[0,P.xm]);
+  const ist=[irot[0]+icore[0]+imag[0], irot[1]+icore[1]+imag[1]];
+  const i1=cabs(ist);
+  const pstatcu=3*i1*i1*P.r1, pcore=3*cabs(e)**2/P.rc;
+  const pin=3*(v1[0]*ist[0]+v1[1]*ist[1]);
+  const pf=i1>0?pin/(3*vph*i1):0;
+  const eff=pin>0?Math.max(Math.min(pout/pin,1),0):0;
+  return {slip:s, speed_rpm:ns*(1-s), torque_em:te, i1, pf, pin, pout:Math.max(pout,0),
+          qloss:pstatcu+protcu+pcore+P.mech_loss, eff};
+}
+function torqueAtSpeed(rpm){const ns=120*design.freq/design.poles;return operatingPoint((ns-rpm)/ns).torque_em;}
+function torqueSpeedCurve(n=150){
+  const ns=120*design.freq/design.poles, sp=[],tq=[];
+  for(let i=1;i<=n;i++){const s=1-(i-1)/n;const op=operatingPoint(s);sp.push(op.speed_rpm);tq.push(op.torque_em);}
+  return {sp,tq};
+}
+
+/* ----------------------------- thermal -------------------------------------- */
+const TH={c_w:1500, c_h:9000, g_wh:12, g_ha:6, cool:0.10};
+
+/* ----------------------------- ML surrogate --------------------------------- */
+// Calibrated to reproduce the trained models' behaviour vs. defect severity.
+function mlPredict(sev){
+  const fail = 1/(1+Math.exp(-22*(sev-0.5)));        // ~0 below .35, ~1 above .6
+  const rul_files = Math.max(2, 100*Math.exp(-3.0*sev));
+  return {fail, rul_h: rul_files*10/60, anomaly: sev>0.25};
+}
+
+/* ----------------------------- dynamic twin --------------------------------- */
+let st;
+function resetTwin(){
+  st={speed:0, tw:+amb.value, th:+amb.value, wear:0, t:0,
+      hist:{t:[],rpm:[],tw:[],pin:[],pout:[]}};
+}
+function step(dt){
+  const load=+load_.value, ambT=+amb.value, air=+air_.value,
+        bcond=+bear.value, lub=+lub_.value;
+  const te=torqueAtSpeed(st.speed);
+  const w=2*Math.PI*st.speed/60;
+  const net=te-load-P.friction*w;
+  const wn=Math.max(w+net/design.inertia*dt,0);
+  st.speed=60*wn/(2*Math.PI);
+  const op=operatingPoint(Math.max((120*design.freq/design.poles - st.speed)/(120*design.freq/design.poles),1e-6));
+
+  // thermal (Euler)
+  const gha=TH.g_ha+TH.cool*Math.max(air,0);
+  const qwh=TH.g_wh*(st.tw-st.th), qha=gha*(st.th-ambT);
+  st.tw+=(op.qloss-qwh)/TH.c_w*dt;
+  st.th+=(qwh-qha)/TH.c_h*dt;
+
+  // wear (empirical)
+  const lf=Math.abs(load)/Math.max(P.rated_power/(2*Math.PI*(120*design.freq/design.poles)/60),1);
+  const hf=Math.max(st.tw-60,0)/60, lube=(2-lub);
+  let rate=1e-6*(1+lf)*(1+hf)*lube*(2-bcond);
+  st.wear=Math.min(st.wear+rate*dt,1);
+  const vib=0.5+4*st.wear+0.002*st.speed*(1-bcond);
+  const rul_h = rate>0 ? (1-st.wear)/(rate*3600) : Infinity;
+  st.t+=dt;
+  return {...op, speed_rpm:st.speed, tw:st.tw, th:st.th, wear:st.wear, vib, rul_h,
+          sev:Math.min((1-bcond)+0.5*(1-lub)+st.wear,1)};
+}
+
+/* ----------------------------- recommendations ------------------------------ */
+function recommend(s){
+  const r=[];
+  if(s.tw>130) r.push(['crit',`🚨 Winding ${s.tw.toFixed(0)}°C exceeds insulation limit — reduce load / add cooling now.`]);
+  else if(s.tw>100) r.push(['warn',`⚠️ Winding hot (${s.tw.toFixed(0)}°C). Increase cooling or lower load.`]);
+  if(s.eff>0&&s.eff<0.75) r.push(['warn',`⚠️ Efficiency low (${(s.eff*100).toFixed(0)}%). Likely lightly loaded / oversized.`]);
+  if(s.vib>4) r.push(['crit',`🚨 Excessive vibration (${s.vib.toFixed(1)} mm/s). Balance rotor / check bearings.`]);
+  else if(s.vib>2.8) r.push(['warn',`⚠️ Elevated vibration (${s.vib.toFixed(1)} mm/s). Schedule a balancing check.`]);
+  if(s.wear>0.8) r.push(['crit','🚨 Bearing wear critical — schedule replacement now.']);
+  else if(s.wear>0.5) r.push(['warn','⚠️ Bearing past half-life — plan replacement.']);
+  if(!r.length) r.push(['info','✅ All monitored parameters within normal limits.']);
+  return r;
+}
+
+/* ----------------------------- plotting ------------------------------------- */
+const dark={paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)',
+            font:{color:'#9aa7b4',size:11},margin:{l:40,r:14,t:30,b:30}};
+const G={displayModeBar:false,responsive:true};
+function gaugeFig(val,title,min,max,suffix,good,warn){
+  const steps = (good!=null)?[
+    {range:[min,good],color:'rgba(46,204,113,0.35)'},
+    {range:[good,warn],color:'rgba(241,196,15,0.35)'},
+    {range:[warn,max],color:'rgba(231,76,60,0.35)'}]:[];
+  return [{type:'indicator',mode:'gauge+number',value:val,
+    number:{suffix:suffix||'',font:{color:'#e6edf3',size:22}},
+    title:{text:title,font:{size:13}},
+    gauge:{axis:{range:[min,max]},bar:{color:'#2f81f7'},steps,
+           bordercolor:'#2b3340'}}];
+}
+function drawGauges(s){
+  const ns=120*design.freq/design.poles;
+  const rt=P.rated_power/(2*Math.PI*ns/60);
+  Plotly.react('gSpeed',gaugeFig(s.speed_rpm,'Speed [RPM]',0,ns*1.05,'',ns*0.9,ns),{...dark,height:200},G);
+  Plotly.react('gTorque',gaugeFig(s.torque_em,'Torque [N·m]',0,Math.max(3*rt,60),'',1.5*rt,2.2*rt),{...dark,height:200},G);
+  Plotly.react('gTemp',gaugeFig(s.tw,'Winding [°C]',0,180,'',100,130),{...dark,height:200},G);
+  Plotly.react('gEff',gaugeFig(s.eff*100,'Efficiency',0,100,'%'),{...dark,height:200},G);
+}
+function drawTrends(){
+  const h=st.hist;
+  Plotly.react('trend',[
+    {x:h.t,y:h.rpm,name:'Speed [RPM]',line:{color:'#2f81f7'}},
+    {x:h.t,y:h.tw,name:'Winding °C',yaxis:'y2',line:{color:'#e74c3c'}}],
+    {...dark,height:260,xaxis:{title:'time [s]'},yaxis:{title:'RPM'},
+     yaxis2:{title:'°C',overlaying:'y',side:'right'},
+     legend:{orientation:'h',y:1.2}},G);
+  Plotly.react('power',[
+    {x:h.t,y:h.pin,name:'P in [kW]',line:{color:'#f1c40f'}},
+    {x:h.t,y:h.pout,name:'P out [kW]',line:{color:'#2ecc71'}}],
+    {...dark,height:220,xaxis:{title:'time [s]'},yaxis:{title:'kW'},
+     legend:{orientation:'h',y:1.2}},G);
+}
+let curveCache='';
+function drawTSC(s){
+  const key=`${design.v_line}|${design.freq}|${design.poles}`;
+  if(key!==curveCache){window._c=torqueSpeedCurve(150);curveCache=key;}
+  const c=window._c;
+  Plotly.react('tsc',[
+    {x:c.sp,y:c.tq,name:'EM torque',line:{color:'#2f81f7'}},
+    {x:[s.speed_rpm],y:[s.torque_em],mode:'markers',name:'operating pt',
+     marker:{size:13,color:'#e74c3c'}}],
+    {...dark,height:260,xaxis:{title:'speed [RPM]'},yaxis:{title:'torque [N·m]'},
+     shapes:[{type:'line',x0:Math.min(...c.sp),x1:Math.max(...c.sp),
+              y0:+load_.value,y1:+load_.value,line:{dash:'dash',color:'#9aa7b4'}}],
+     legend:{orientation:'h',y:1.2}},G);
+}
+function drawML(s){
+  const p=mlPredict(s.sev);
+  Plotly.react('gFail',gaugeFig(p.fail*100,'Failure prob',0,100,'%',30,70),{...dark,height:170},G);
+  document.getElementById('mlRUL').textContent=p.rul_h.toFixed(1)+' h';
+  const a=document.getElementById('anom');
+  a.textContent=p.anomaly?'🚨 Anomalous':'✅ Normal';
+  a.className='pill '+(p.anomaly?'bad':'ok');
+}
+function drawMetrics(s){
+  const set=(id,v)=>document.getElementById(id).textContent=v;
+  set('mPin',(s.pin/1000).toFixed(2)+' kW'); set('mPout',(s.pout/1000).toFixed(2)+' kW');
+  set('mI',s.i1.toFixed(1)+' A'); set('mPF',s.pf.toFixed(2));
+  set('mSlip',(s.slip*100).toFixed(1)+' %'); set('mVib',s.vib.toFixed(2)+' mm/s');
+  set('mWear',(s.wear*100).toFixed(1)+' %');
+  set('mRUL', isFinite(s.rul_h)?Math.round(s.rul_h).toLocaleString()+' h':'∞');
+  document.getElementById('recs').innerHTML=
+    recommend(s).map(([c,t])=>`<div class="${c}">${t}</div>`).join('');
+}
+
+/* ----------------------------- controls + loop ------------------------------ */
+const $=id=>document.getElementById(id);
+const v_line=$('v_line'),freq=$('freq'),poles=$('poles'),inertia=$('inertia'),
+      load_=$('load'),amb=$('amb'),air_=$('air'),bear=$('bear'),lub_=$('lub');
+function syncLabels(){
+  $('vV').textContent=v_line.value; $('Jv').textContent=(+inertia.value).toFixed(2);
+  $('loadV').textContent=load_.value; $('ambV').textContent=amb.value;
+  $('airV').textContent=air_.value; $('bearV').textContent=(+bear.value).toFixed(2);
+  $('lubV').textContent=(+lub_.value).toFixed(2);
+}
+function applyDesign(){
+  design.v_line=+v_line.value; design.freq=+freq.value;
+  design.poles=+poles.value; design.inertia=+inertia.value;
+}
+[v_line,freq,poles,inertia].forEach(el=>el.addEventListener('input',()=>{
+  syncLabels();applyDesign();resetTwin();}));
+[load_,amb,air_,bear,lub_].forEach(el=>el.addEventListener('input',syncLabels));
+
+let running=true;
+$('runBtn').addEventListener('click',e=>{
+  running=!running; e.target.textContent=running?'⏸ Pause':'▶ Run';
+  e.target.classList.toggle('primary',running);
+});
+$('resetBtn').addEventListener('click',resetTwin);
+
+let last=null;
+function frame(){
+  if(running){
+    for(let i=0;i<20;i++) last=step(0.01);      // ~0.2 s sim / tick
+    const h=st.hist, N=600;
+    h.t.push(+st.t.toFixed(2)); h.rpm.push(st.speed); h.tw.push(st.tw);
+    h.pin.push(last.pin/1000); h.pout.push(last.pout/1000);
+    ['t','rpm','tw','pin','pout'].forEach(k=>{if(h[k].length>N)h[k].shift();});
+  }
+  if(last){drawGauges(last);drawMetrics(last);drawTrends();drawTSC(last);drawML(last);}
+}
+syncLabels();applyDesign();resetTwin();last=step(0.01);
+setInterval(frame,200);
+frame();
+</script>
+</body>
+</html>

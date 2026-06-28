@@ -1,0 +1,26 @@
+{
+  "source": "synthetic",
+  "n_samples": 720,
+  "n_train": 600,
+  "n_test": 120,
+  "feature_names": [
+    "rms",
+    "peak",
+    "kurtosis",
+    "skew",
+    "crest_factor",
+    "shape_factor",
+    "impulse_factor",
+    "spectral_centroid",
+    "band_lo",
+    "band_mid",
+    "band_hi",
+    "e_ftf",
+    "e_bpfo",
+    "e_bpfi",
+    "e_bsf"
+  ],
+  "rul_mae_files": 17.611,
+  "rul_r2": 0.557,
+  "failure_auc": 1.0
+}
