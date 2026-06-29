@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Digital Twin — 3-Phase Induction Motor</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<style>
+  /* Palette: white→beige surfaces + a single green accent (design-model) */
+  :root{
+    --bg:#f4f2ec; --panel:#ffffff; --panel2:#faf8f3; --line:#e7e3d9;
+    --text:#1d2125; --muted:#71757c; --faint:#9aa0a6;
+    --accent:#2e9e6b; --accent-strong:#23875a; --accent-soft:#e7f3ec;
+    --good:#2e9e6b; --warn:#d49a2b; --bad:#cf5b3d;
+    --radius:14px; --shadow:0 1px 2px rgba(31,33,37,.05), 0 1px 8px rgba(31,33,37,.03);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Inter",-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+       background:var(--bg);color:var(--text);font-size:14px}
+  .label{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600}
+  header{padding:16px 26px;border-bottom:1px solid var(--line);background:var(--panel);
+         display:flex;align-items:center;gap:14px}
+  header h1{font-size:17px;margin:0;font-weight:650;letter-spacing:-.01em}
+  header .badge{font-size:11px;color:var(--accent-strong);background:var(--accent-soft);
+                border:1px solid #cfe7d9;padding:4px 10px;border-radius:999px;font-weight:600}
+  .wrap{display:grid;grid-template-columns:300px 1fr;min-height:calc(100vh - 56px)}
+  aside{background:var(--panel);border-right:1px solid var(--line);padding:22px 20px;overflow-y:auto}
+  aside .label{margin:22px 0 12px} aside .label:first-child{margin-top:0}
+  .ctrl{margin-bottom:16px}
+  .ctrl .top{display:flex;justify-content:space-between;font-size:13px;margin-bottom:7px;color:var(--text)}
+  .ctrl .top b{color:var(--accent-strong);font-variant-numeric:tabular-nums;font-weight:650}
+  input[type=range]{width:100%;accent-color:var(--accent);height:4px}
+  select{width:100%;background:var(--panel);color:var(--text);border:1px solid var(--line);
+         border-radius:9px;padding:8px 10px;font-size:13px}
+  .row{display:flex;gap:9px;margin-top:18px}
+  button{flex:1;background:var(--panel);color:var(--text);border:1px solid var(--line);
+         border-radius:10px;padding:10px;cursor:pointer;font-size:13px;font-weight:600;transition:.15s}
+  button:hover{border-color:var(--accent);color:var(--accent-strong)}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.primary:hover{background:var(--accent-strong);color:#fff}
+  main{padding:24px;overflow-y:auto;max-width:1500px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+        padding:16px;box-shadow:var(--shadow)}
+  .card h3{margin:0 0 12px;font-size:13px;font-weight:650;letter-spacing:-.01em}
+  .gauges{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:14px 0}
+  .metric{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+          padding:14px 16px;box-shadow:var(--shadow)}
+  .metric .v{font-size:23px;font-weight:650;font-variant-numeric:tabular-nums;margin-top:6px;letter-spacing:-.02em}
+  .grid2{display:grid;grid-template-columns:3fr 2fr;gap:14px;margin-top:14px}
+  .stack{display:flex;flex-direction:column;gap:14px}
+  .recs{font-size:13px;line-height:1.65;display:flex;flex-direction:column;gap:6px}
+  .recs .crit{color:var(--bad)} .recs .warn{color:var(--warn)} .recs .info{color:var(--accent-strong)}
+  .ml{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:center}
+  .pill{font-size:13px;padding:8px 10px;border-radius:10px;text-align:center;font-weight:600;
+        border:1px solid var(--line);background:var(--panel2)}
+  .pill.ok{color:var(--accent-strong);background:var(--accent-soft);border-color:#cfe7d9}
+  .pill.bad{color:var(--bad);background:#fbeeea;border-color:#f0cfc4}
+  .motorwrap{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+  .motorwrap svg{flex:1;min-width:340px;max-width:640px}
+  .legend{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:9px;min-width:150px}
+  .legend .dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:7px;vertical-align:middle}
+  .tempbar{height:8px;border-radius:5px;margin-top:4px;
+           background:linear-gradient(90deg,#2e9e6b,#d49a2b,#cf5b3d)}
+  footer{color:var(--muted);font-size:12px;padding:14px 26px;border-top:1px solid var(--line);background:var(--panel)}
+  footer code{background:var(--panel2);border:1px solid var(--line);padding:1px 5px;border-radius:5px}
+</style>
+</head>
+<body>
+<header>
+  <h1>⚙️ Digital Twin — 3-Phase Induction Motor</h1>
+  <span class="badge">live · runs in-browser</span>
+</header>
+
+<div class="wrap">
+  <aside>
+    <div class="label">Motor Designer</div>
+    <div class="ctrl"><div class="top">Rated line voltage [V] <b id="vV">400</b></div>
+      <input id="v_line" type="range" min="100" max="690" step="10" value="400"></div>
+    <div class="ctrl"><div class="top">Supply frequency [Hz]</div>
+      <select id="freq"><option value="50">50</option><option value="60">60</option></select></div>
+    <div class="ctrl"><div class="top">Poles</div>
+      <select id="poles"><option>2</option><option selected>4</option><option>6</option><option>8</option></select></div>
+    <div class="ctrl"><div class="top">Inertia J [kg·m²] <b id="Jv">0.05</b></div>
+      <input id="inertia" type="range" min="0.01" max="0.5" step="0.01" value="0.05"></div>
+
+    <div class="label">Operating Conditions</div>
+    <div class="ctrl"><div class="top">Load torque [N·m] <b id="loadV">45</b></div>
+      <input id="load" type="range" min="0" max="160" step="1" value="45"></div>
+    <div class="ctrl"><div class="top">Ambient temp [°C] <b id="ambV">25</b></div>
+      <input id="amb" type="range" min="-10" max="50" step="1" value="25"></div>
+    <div class="ctrl"><div class="top">Cooling airflow [m³/h] <b id="airV">80</b></div>
+      <input id="air" type="range" min="0" max="300" step="5" value="80"></div>
+    <div class="ctrl"><div class="top">Bearing condition <b id="bearV">1.00</b></div>
+      <input id="bear" type="range" min="0" max="1" step="0.05" value="1"></div>
+    <div class="ctrl"><div class="top">Lubrication quality <b id="lubV">1.00</b></div>
+      <input id="lub" type="range" min="0" max="1" step="0.05" value="1"></div>
+
+    <div class="row">
+      <button id="runBtn" class="primary">⏸ Pause</button>
+      <button id="resetBtn">⟲ Reset</button>
+    </div>
+  </aside>
+
+  <main>
+    <div class="gauges">
+      <div class="card"><div id="gSpeed" class="plot"></div></div>
+      <div class="card"><div id="gTorque" class="plot"></div></div>
+      <div class="card"><div id="gTemp" class="plot"></div></div>
+      <div class="card"><div id="gEff" class="plot"></div></div>
+    </div>
+
+    <div class="metrics">
+      <div class="metric"><div class="label">Input power</div><div class="v" id="mPin">–</div></div>
+      <div class="metric"><div class="label">Output power</div><div class="v" id="mPout">–</div></div>
+      <div class="metric"><div class="label">Stator current</div><div class="v" id="mI">–</div></div>
+      <div class="metric"><div class="label">Power factor</div><div class="v" id="mPF">–</div></div>
+    </div>
+    <div class="metrics">
+      <div class="metric"><div class="label">Slip</div><div class="v" id="mSlip">–</div></div>
+      <div class="metric"><div class="label">Vibration</div><div class="v" id="mVib">–</div></div>
+      <div class="metric"><div class="label">Bearing wear</div><div class="v" id="mWear">–</div></div>
+      <div class="metric"><div class="label">Est. remaining life</div><div class="v" id="mRUL">–</div></div>
+    </div>
+
+    <!-- ===================== Animated 2D motor ===================== -->
+    <div class="card">
+      <h3>Motor — live cutaway view</h3>
+      <div class="motorwrap">
+        <svg id="motorSvg" viewBox="0 0 560 260" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="bodyGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#efece4"/>
+            </linearGradient>
+            <linearGradient id="shaftGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#cdd2d8"/><stop offset=".5" stop-color="#9aa0a6"/>
+              <stop offset="1" stop-color="#cdd2d8"/>
+            </linearGradient>
+          </defs>
+
+          <!-- shake group: jitters when vibration is high -->
+          <g id="shake">
+            <!-- feet -->
+            <rect x="120" y="208" width="46" height="20" rx="3" fill="#e3dfd4" stroke="#d8d3c6"/>
+            <rect x="300" y="208" width="46" height="20" rx="3" fill="#e3dfd4" stroke="#d8d3c6"/>
+
+            <!-- rear fan cover (left) -->
+            <rect x="60" y="92" width="46" height="86" rx="10" fill="url(#bodyGrad)" stroke="#d8d3c6"/>
+            <g id="fan" transform="rotate(0 83 135)">
+              <circle cx="83" cy="135" r="26" fill="#f3f0e9" stroke="#d8d3c6"/>
+              <g stroke="#bfc4ca" stroke-width="5" stroke-linecap="round">
+                <line x1="83" y1="135" x2="83" y2="113"/>
+                <line x1="83" y1="135" x2="102" y2="146"/>
+                <line x1="83" y1="135" x2="64" y2="146"/>
+              </g>
+              <circle cx="83" cy="135" r="5" fill="#9aa0a6"/>
+            </g>
+
+            <!-- main body (side profile, right half) -->
+            <rect x="250" y="78" width="170" height="114" rx="16" fill="url(#bodyGrad)" stroke="#d8d3c6"/>
+            <!-- cooling fins -->
+            <g stroke="#d8d3c6" stroke-width="2">
+              <line x1="270" y1="80" x2="270" y2="190"/><line x1="285" y1="80" x2="285" y2="190"/>
+              <line x1="300" y1="80" x2="300" y2="190"/><line x1="315" y1="80" x2="315" y2="190"/>
+              <line x1="330" y1="80" x2="330" y2="190"/><line x1="345" y1="80" x2="345" y2="190"/>
+              <line x1="360" y1="80" x2="360" y2="190"/><line x1="375" y1="80" x2="375" y2="190"/>
+            </g>
+            <!-- terminal box -->
+            <rect x="300" y="58" width="60" height="24" rx="4" fill="#eceae2" stroke="#d8d3c6"/>
+
+            <!-- shaft + spinning coupling (right) -->
+            <rect x="420" y="126" width="86" height="16" rx="5" fill="url(#shaftGrad)" stroke="#b7bcc2"/>
+            <g id="coupling" transform="rotate(0 486 134)">
+              <circle cx="486" cy="134" r="22" fill="#e9e6dd" stroke="#c7c2b5"/>
+              <g stroke="#aeb3b9" stroke-width="4" stroke-linecap="round">
+                <line x1="486" y1="134" x2="486" y2="116"/><line x1="486" y1="134" x2="486" y2="152"/>
+                <line x1="486" y1="134" x2="502" y2="134"/><line x1="486" y1="134" x2="470" y2="134"/>
+              </g>
+              <circle cx="486" cy="134" r="4" fill="#8c9198"/>
+            </g>
+
+            <!-- ===== circular cross-section (left half) ===== -->
+            <!-- stator outer -->
+            <circle cx="170" cy="135" r="72" fill="#f3f0e9" stroke="#cfcabc" stroke-width="2"/>
+            <!-- stator yoke -->
+            <circle cx="170" cy="135" r="60" fill="#ffffff" stroke="#ddd8ca"/>
+            <!-- winding slots (color set by temperature) -->
+            <g id="windings"></g>
+            <!-- air gap -->
+            <circle cx="170" cy="135" r="40" fill="#faf8f3" stroke="#e7e3d9"/>
+            <!-- rotor (rotates) -->
+            <g id="rotor" transform="rotate(0 170 135)">
+              <circle cx="170" cy="135" r="37" fill="#e9e6dd" stroke="#c7c2b5"/>
+              <g id="rotorBars"></g>
+              <!-- keyway marker so rotation is obvious -->
+              <rect x="166" y="98" width="8" height="12" rx="2" fill="var(--accent)"/>
+              <line x1="170" y1="135" x2="170" y2="103" stroke="#b7bcc2" stroke-width="3"/>
+            </g>
+            <circle cx="170" cy="135" r="7" fill="#9aa0a6" stroke="#7e848b"/>
+            <text x="170" y="225" text-anchor="middle" font-size="11" fill="#71757c">cross-section</text>
+            <text x="335" y="225" text-anchor="middle" font-size="11" fill="#71757c">side profile</text>
+          </g>
+        </svg>
+
+        <div class="legend">
+          <div><span class="dot" style="background:var(--accent)"></span>Rotor &amp; shaft (spins at live RPM)</div>
+          <div><span class="dot" style="background:#d49a2b"></span>Stator windings (color = winding temp)</div>
+          <div class="label" style="margin-top:6px">Winding temperature</div>
+          <div class="tempbar"></div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--faint)">
+            <span>30°C</span><span>150°C</span></div>
+          <div id="motorStatus" style="margin-top:6px;font-weight:600;color:var(--accent-strong)">● running</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="stack">
+        <div class="card"><h3>Live trends</h3><div id="trend" class="plot"></div></div>
+        <div class="card"><h3>Power</h3><div id="power" class="plot"></div></div>
+      </div>
+      <div class="stack">
+        <div class="card"><h3>Torque–speed characteristic</h3><div id="tsc" class="plot"></div></div>
+        <div class="card">
+          <h3>🤖 ML bearing prognostics</h3>
+          <div class="ml">
+            <div id="gFail" class="plot"></div>
+            <div class="stack">
+              <div class="metric" style="box-shadow:none"><div class="label">ML remaining life</div><div class="v" id="mlRUL">–</div></div>
+              <div id="anom" class="pill ok">✅ Normal</div>
+            </div>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:10px">
+            In-browser surrogate of the trained scikit-learn models, calibrated to
+            match their behaviour.
+          </div>
+        </div>
+        <div class="card"><h3>🧠 Recommendations</h3><div id="recs" class="recs"></div></div>
+      </div>
+    </div>
+  </main>
+</div>
+<footer>Physics: per-phase equivalent circuit + Thévenin reduction · 2-node lumped thermal network · explicit-Euler rotor dynamics — the same model as the Python <code>motor_twin</code> package.</footer>
+
+<script>
+/* ----------------------------- complex helpers ------------------------------ */
+const cmul=(a,b)=>[a[0]*b[0]-a[1]*b[1], a[0]*b[1]+a[1]*b[0]];
+const cdiv=(a,b)=>{const d=b[0]*b[0]+b[1]*b[1];return [(a[0]*b[0]+a[1]*b[1])/d,(a[1]*b[0]-a[0]*b[1])/d];};
+const cabs=a=>Math.hypot(a[0],a[1]);
+const csub=(a,b)=>[a[0]-b[0],a[1]-b[1]];
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+
+/* ----------------------------- motor model ---------------------------------- */
+const P={r1:0.50,x1:1.20,r2:0.55,x2:1.20,xm:35.0,rc:360.0,
+         friction:0.002, mech_loss:80.0, rated_power:7500.0};
+let design={v_line:400, freq:50, poles:4, inertia:0.05};
+const vphase=()=>design.v_line/Math.sqrt(3);
+
+function operatingPoint(slip){
+  const s=Math.max(slip,1e-6), vph=vphase();
+  const ns=120*design.freq/design.poles, ws=2*Math.PI*ns/60;
+  const denom=[P.r1, P.x1+P.xm];
+  const vth=vph*cabs(cdiv([0,P.xm],denom));
+  const zth=cdiv(cmul([0,P.xm],[P.r1,P.x1]),denom);
+  const rth=zth[0], xth=zth[1];
+  const r2s=P.r2/s, zsq=(rth+r2s)**2+(xth+P.x2)**2;
+  const te=3*vth*vth*r2s/(ws*zsq), i2=vth/Math.sqrt(zsq);
+  const pair=te*ws, protcu=3*i2*i2*P.r2, pmech=pair-protcu, pout=pmech-P.mech_loss;
+  const v1=[vph,0], zrot=[P.r1+r2s, P.x1+P.x2], irot=cdiv(v1,zrot);
+  const e=csub(v1, cmul(irot,[P.r1,P.x1]));
+  const ist=[irot[0]+cdiv(e,[P.rc,0])[0]+cdiv(e,[0,P.xm])[0],
+             irot[1]+cdiv(e,[P.rc,0])[1]+cdiv(e,[0,P.xm])[1]];
+  const i1=cabs(ist), pstatcu=3*i1*i1*P.r1, pcore=3*cabs(e)**2/P.rc;
+  const pin=3*(v1[0]*ist[0]+v1[1]*ist[1]);
+  const pf=i1>0?pin/(3*vph*i1):0, eff=pin>0?clamp(pout/pin,0,1):0;
+  return {slip:s, speed_rpm:ns*(1-s), torque_em:te, i1, pf, pin, pout:Math.max(pout,0),
+          qloss:pstatcu+protcu+pcore+P.mech_loss, eff};
+}
+const ns_=()=>120*design.freq/design.poles;
+function torqueAtSpeed(rpm){return operatingPoint((ns_()-rpm)/ns_()).torque_em;}
+function torqueSpeedCurve(n=150){
+  const sp=[],tq=[];
+  for(let i=1;i<=n;i++){const op=operatingPoint(1-(i-1)/n);sp.push(op.speed_rpm);tq.push(op.torque_em);}
+  return {sp,tq};
+}
+
+/* ----------------------------- thermal / ML --------------------------------- */
+const TH={c_w:1500, c_h:9000, g_wh:12, g_ha:6, cool:0.10};
+function mlPredict(sev){
+  return {fail:1/(1+Math.exp(-22*(sev-0.5))),
+          rul_h:Math.max(2,100*Math.exp(-3.0*sev))*10/60, anomaly:sev>0.25};
+}
+
+/* ----------------------------- dynamic twin --------------------------------- */
+let st;
+function resetTwin(){st={speed:0,tw:+amb.value,th:+amb.value,wear:0,t:0,angle:0,
+  hist:{t:[],rpm:[],tw:[],pin:[],pout:[]}};}
+function step(dt){
+  const load=+load_.value,ambT=+amb.value,air=+air_.value,bcond=+bear.value,lub=+lub_.value;
+  const te=torqueAtSpeed(st.speed), w=2*Math.PI*st.speed/60;
+  const wn=Math.max(w+(te-load-P.friction*w)/design.inertia*dt,0);
+  st.speed=60*wn/(2*Math.PI);
+  const op=operatingPoint(Math.max((ns_()-st.speed)/ns_(),1e-6));
+  const gha=TH.g_ha+TH.cool*Math.max(air,0);
+  const qwh=TH.g_wh*(st.tw-st.th);
+  st.tw+=(op.qloss-qwh)/TH.c_w*dt; st.th+=(qwh-gha*(st.th-ambT))/TH.c_h*dt;
+  const lf=Math.abs(load)/Math.max(P.rated_power/(2*Math.PI*ns_()/60),1);
+  const rate=1e-6*(1+lf)*(1+Math.max(st.tw-60,0)/60)*(2-lub)*(2-bcond);
+  st.wear=Math.min(st.wear+rate*dt,1);
+  const vib=0.5+4*st.wear+0.002*st.speed*(1-bcond);
+  st.t+=dt;
+  return {...op, speed_rpm:st.speed, tw:st.tw, wear:st.wear, vib,
+          rul_h:rate>0?(1-st.wear)/(rate*3600):Infinity,
+          sev:Math.min((1-bcond)+0.5*(1-lub)+st.wear,1)};
+}
+
+/* ----------------------------- recommendations ------------------------------ */
+function recommend(s){
+  const r=[];
+  if(s.tw>130) r.push(['crit',`🚨 Winding ${s.tw.toFixed(0)}°C exceeds insulation limit — reduce load / add cooling.`]);
+  else if(s.tw>100) r.push(['warn',`⚠️ Winding hot (${s.tw.toFixed(0)}°C). Increase cooling or lower load.`]);
+  if(s.eff>0&&s.eff<0.75) r.push(['warn',`⚠️ Efficiency low (${(s.eff*100).toFixed(0)}%). Likely lightly loaded / oversized.`]);
+  if(s.vib>4) r.push(['crit',`🚨 Excessive vibration (${s.vib.toFixed(1)} mm/s). Balance rotor / check bearings.`]);
+  else if(s.vib>2.8) r.push(['warn',`⚠️ Elevated vibration (${s.vib.toFixed(1)} mm/s). Schedule a balancing check.`]);
+  if(s.wear>0.8) r.push(['crit','🚨 Bearing wear critical — schedule replacement now.']);
+  else if(s.wear>0.5) r.push(['warn','⚠️ Bearing past half-life — plan replacement.']);
+  if(!r.length) r.push(['info','✅ All monitored parameters within normal limits.']);
+  return r;
+}
+
+/* ----------------------------- 2D motor view -------------------------------- */
+function tempColor(t){
+  const x=clamp((t-30)/120,0,1), L=(a,b,f)=>Math.round(a+(b-a)*f);
+  let c; if(x<0.5){const f=x/0.5;c=[L(46,212,f),L(158,154,f),L(107,43,f)];}
+  else{const f=(x-0.5)/0.5;c=[L(212,207,f),L(154,91,f),L(43,61,f)];}
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
+// build static stator slots + rotor bars once
+(function buildMotorGeometry(){
+  const cx=170,cy=135, wg=document.getElementById('windings'), rb=document.getElementById('rotorBars');
+  let s='';
+  for(let i=0;i<12;i++){const a=i/12*2*Math.PI, r=49;
+    const x=cx+r*Math.cos(a), y=cy+r*Math.sin(a);
+    s+=`<rect class="wind" x="${(x-4).toFixed(1)}" y="${(y-4).toFixed(1)}" width="8" height="8" rx="2"
+         transform="rotate(${(a*180/Math.PI).toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)})"
+         fill="#d49a2b"/>`;}
+  wg.innerHTML=s;
+  let b=''; for(let i=0;i<10;i++){const a=i/10*2*Math.PI, r=30;
+    b+=`<circle cx="${(cx+r*Math.cos(a)).toFixed(1)}" cy="${(cy+r*Math.sin(a)).toFixed(1)}" r="3.2" fill="#c7c2b5"/>`;}
+  rb.innerHTML=b;
+})();
+const elRotor=document.getElementById('rotor'), elCoup=document.getElementById('coupling'),
+      elFan=document.getElementById('fan'), elShake=document.getElementById('shake'),
+      elStatus=document.getElementById('motorStatus');
+function drawMotor(s){
+  // visual rotation: scaled so full speed ~1 rev/s, clearly proportional to RPM
+  st.angle=(st.angle + s.speed_rpm/ns_()*60)%360;
+  elRotor.setAttribute('transform',`rotate(${st.angle} 170 135)`);
+  elCoup.setAttribute('transform',`rotate(${st.angle} 486 134)`);
+  elFan.setAttribute('transform',`rotate(${-st.angle} 83 135)`);
+  const col=tempColor(s.tw);
+  document.querySelectorAll('#windings .wind').forEach(w=>w.setAttribute('fill',col));
+  // vibration shake
+  const v=clamp((s.vib-2)/4,0,1)*2.2;
+  elShake.setAttribute('transform', v>0.05
+    ? `translate(${(Math.random()-0.5)*v} ${(Math.random()-0.5)*v})` : '');
+  elStatus.textContent = !running ? '❚❚ paused'
+    : s.speed_rpm<5 ? '● starting…' : '● running';
+  elStatus.style.color = running ? 'var(--accent-strong)' : 'var(--muted)';
+}
+
+/* ----------------------------- plotting ------------------------------------- */
+const lay={paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)',
+           font:{color:'#71757c',size:11,family:'Inter,sans-serif'},margin:{l:42,r:14,t:28,b:30}};
+const G={displayModeBar:false,responsive:true};
+function gaugeFig(val,title,min,max,suffix,good,warn){
+  const steps=(good!=null)?[
+    {range:[min,good],color:'rgba(46,158,107,0.18)'},
+    {range:[good,warn],color:'rgba(212,154,43,0.22)'},
+    {range:[warn,max],color:'rgba(207,91,61,0.22)'}]:[];
+  return [{type:'indicator',mode:'gauge+number',value:val,
+    number:{suffix:suffix||'',font:{color:'#1d2125',size:22}},
+    title:{text:title,font:{size:12,color:'#71757c'}},
+    gauge:{axis:{range:[min,max],tickcolor:'#c9c5ba'},bar:{color:'#2e9e6b',thickness:.7},
+           steps,bordercolor:'#e7e3d9',borderwidth:1}}];
+}
+const C=(g,d)=>Plotly.react(g,d[0]?d:d,{...lay,...d.l},G); // small helper not used; keep explicit below
+function drawGauges(s){
+  const ns=ns_(), rt=P.rated_power/(2*Math.PI*ns/60);
+  Plotly.react('gSpeed',gaugeFig(s.speed_rpm,'SPEED [RPM]',0,ns*1.05,'',ns*0.9,ns),{...lay,height:190},G);
+  Plotly.react('gTorque',gaugeFig(s.torque_em,'TORQUE [N·m]',0,Math.max(3*rt,60),'',1.5*rt,2.2*rt),{...lay,height:190},G);
+  Plotly.react('gTemp',gaugeFig(s.tw,'WINDING [°C]',0,180,'',100,130),{...lay,height:190},G);
+  Plotly.react('gEff',gaugeFig(s.eff*100,'EFFICIENCY',0,100,'%'),{...lay,height:190},G);
+}
+function drawTrends(){
+  const h=st.hist;
+  Plotly.react('trend',[
+    {x:h.t,y:h.rpm,name:'Speed [RPM]',line:{color:'#2e9e6b',width:2}},
+    {x:h.t,y:h.tw,name:'Winding °C',yaxis:'y2',line:{color:'#cf5b3d',width:2}}],
+    {...lay,height:250,xaxis:{title:'time [s]',gridcolor:'#eee9dd'},
+     yaxis:{title:'RPM',gridcolor:'#eee9dd'},yaxis2:{title:'°C',overlaying:'y',side:'right'},
+     legend:{orientation:'h',y:1.18}},G);
+  Plotly.react('power',[
+    {x:h.t,y:h.pin,name:'P in [kW]',line:{color:'#d49a2b',width:2}},
+    {x:h.t,y:h.pout,name:'P out [kW]',line:{color:'#2e9e6b',width:2}}],
+    {...lay,height:210,xaxis:{title:'time [s]',gridcolor:'#eee9dd'},
+     yaxis:{title:'kW',gridcolor:'#eee9dd'},legend:{orientation:'h',y:1.2}},G);
+}
+let curveKey='';
+function drawTSC(s){
+  const key=`${design.v_line}|${design.freq}|${design.poles}`;
+  if(key!==curveKey){window._c=torqueSpeedCurve(150);curveKey=key;}
+  const c=window._c;
+  Plotly.react('tsc',[
+    {x:c.sp,y:c.tq,name:'EM torque',line:{color:'#2e9e6b',width:2}},
+    {x:[s.speed_rpm],y:[s.torque_em],mode:'markers',name:'operating pt',
+     marker:{size:13,color:'#cf5b3d'}}],
+    {...lay,height:250,xaxis:{title:'speed [RPM]',gridcolor:'#eee9dd'},
+     yaxis:{title:'torque [N·m]',gridcolor:'#eee9dd'},
+     shapes:[{type:'line',x0:Math.min(...c.sp),x1:Math.max(...c.sp),
+              y0:+load_.value,y1:+load_.value,line:{dash:'dash',color:'#b0b4ba'}}],
+     legend:{orientation:'h',y:1.18}},G);
+}
+function drawML(s){
+  const p=mlPredict(s.sev);
+  Plotly.react('gFail',gaugeFig(p.fail*100,'FAILURE PROB',0,100,'%',30,70),{...lay,height:160},G);
+  document.getElementById('mlRUL').textContent=p.rul_h.toFixed(1)+' h';
+  const a=document.getElementById('anom');
+  a.textContent=p.anomaly?'🚨 Anomalous':'✅ Normal';
+  a.className='pill '+(p.anomaly?'bad':'ok');
+}
+function drawMetrics(s){
+  const set=(id,v)=>document.getElementById(id).textContent=v;
+  set('mPin',(s.pin/1000).toFixed(2)+' kW'); set('mPout',(s.pout/1000).toFixed(2)+' kW');
+  set('mI',s.i1.toFixed(1)+' A'); set('mPF',s.pf.toFixed(2));
+  set('mSlip',(s.slip*100).toFixed(1)+' %'); set('mVib',s.vib.toFixed(2)+' mm/s');
+  set('mWear',(s.wear*100).toFixed(1)+' %');
+  set('mRUL', isFinite(s.rul_h)?Math.round(s.rul_h).toLocaleString()+' h':'∞');
+  document.getElementById('recs').innerHTML=
+    recommend(s).map(([c,t])=>`<div class="${c}">${t}</div>`).join('');
+}
+
+/* ----------------------------- controls + loop ------------------------------ */
+const $=id=>document.getElementById(id);
+const v_line=$('v_line'),freq=$('freq'),poles=$('poles'),inertia=$('inertia'),
+      load_=$('load'),amb=$('amb'),air_=$('air'),bear=$('bear'),lub_=$('lub');
+function syncLabels(){
+  $('vV').textContent=v_line.value; $('Jv').textContent=(+inertia.value).toFixed(2);
+  $('loadV').textContent=load_.value; $('ambV').textContent=amb.value;
+  $('airV').textContent=air_.value; $('bearV').textContent=(+bear.value).toFixed(2);
+  $('lubV').textContent=(+lub_.value).toFixed(2);
+}
+function applyDesign(){design.v_line=+v_line.value;design.freq=+freq.value;
+  design.poles=+poles.value;design.inertia=+inertia.value;}
+[v_line,freq,poles,inertia].forEach(el=>el.addEventListener('input',()=>{syncLabels();applyDesign();resetTwin();}));
+[load_,amb,air_,bear,lub_].forEach(el=>el.addEventListener('input',syncLabels));
+
+let running=true;
+$('runBtn').addEventListener('click',e=>{
+  running=!running; e.target.textContent=running?'⏸ Pause':'▶ Run';
+  e.target.classList.toggle('primary',running);
+});
+$('resetBtn').addEventListener('click',resetTwin);
+
+let last=null;
+function frame(){
+  if(running){
+    for(let i=0;i<20;i++) last=step(0.01);
+    const h=st.hist,N=600;
+    h.t.push(+st.t.toFixed(2));h.rpm.push(st.speed);h.tw.push(st.tw);
+    h.pin.push(last.pin/1000);h.pout.push(last.pout/1000);
+    ['t','rpm','tw','pin','pout'].forEach(k=>{if(h[k].length>N)h[k].shift();});
+  }
+  if(last){drawGauges(last);drawMetrics(last);drawTrends();drawTSC(last);drawML(last);drawMotor(last);}
+}
+syncLabels();applyDesign();resetTwin();last=step(0.01);
+setInterval(frame,200);
+frame();
+</script>
+</body>
+</html>
